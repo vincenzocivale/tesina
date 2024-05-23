@@ -23,12 +23,10 @@ def define_models(enable_categorical=True):
     models = {
         'rf': RandomForestClassifier(n_estimators=100),
         'svm': SVC(),
-        'nb': GaussianNB(),
         'dt': DecisionTreeClassifier(),
         'gbm': GradientBoostingClassifier(),
         'adaboost': AdaBoostClassifier(),
         'mlp': MLPClassifier(),
-        'nc': NearestCentroid(),
         'catboost': CatBoostClassifier(logging_level='Silent')
     }
     return models

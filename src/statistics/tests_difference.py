@@ -1,16 +1,8 @@
-from scipy.stats import friedmanchisquare, f_oneway, mannwhitneyu
+import pandas as pd 
 from itertools import combinations
-import pandas as pd
-
-
+from scipy.stats import friedmanchisquare, f_oneway, mannwhitneyu
 
 def friedman_test(X, y, seed=42):
-    """
-    Esegue il test di Friedman per confrontare le differenze tra i gruppi su misure ripetute,
-    gestendo il caso in cui le classi siano sbilanciate.
-
-    :return: DataFrame contenente i risultati del test
-    """
     result_df = pd.DataFrame(columns=['Feature', 'Group', 'Statistic', 'P-value'])
 
     for feature in X.columns:
@@ -94,4 +86,7 @@ def pairwise_mann_whitney_test(X, y, significant_features):
         test_results_dict[(group1, group2)] = test_results_df
 
     return test_results_dict
+
+
+
 

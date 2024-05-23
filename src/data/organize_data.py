@@ -85,7 +85,7 @@ def salva_dati_per_gruppo(df, percorso_base):
 
 
 
-def split_train_test(df, target, test_size=0.2, random_state=None):
+def split_train_test(df, target, test_size=0.2, random_state=42):
     """
     Dividi il DataFrame in set di addestramento e di test.
 
@@ -105,8 +105,6 @@ def split_train_test(df, target, test_size=0.2, random_state=None):
     # Estrai le feature e il target dal DataFrame
     X = df.drop(target, axis=1)
     y = df[target]
-
-    print(y.name)
 
     # Dividi il DataFrame in set di addestramento e di test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)

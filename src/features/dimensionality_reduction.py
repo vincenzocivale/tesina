@@ -107,3 +107,7 @@ def reduce_dimensionality(X_train, X_test, reduction_technique, n_components=2):
 
 def calculate_reconstruction_error(X, X_reconstructed):
     return mean_squared_error(X, X_reconstructed)
+
+dimensionality_red_dict = {
+    'pca': PCA(n_components=2)
+}
