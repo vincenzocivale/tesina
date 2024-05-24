@@ -21,13 +21,13 @@ def define_models(enable_categorical=True):
         dict: A dictionary where keys are model names and values are model objects.
     """
     models = {
-        'rf': RandomForestClassifier(n_estimators=100),
         'svm': SVC(),
         'dt': DecisionTreeClassifier(),
         'gbm': GradientBoostingClassifier(),
         'adaboost': AdaBoostClassifier(),
         'mlp': MLPClassifier(),
-        'catboost': CatBoostClassifier(logging_level='Silent')
+        'catboost': CatBoostClassifier(logging_level='Silent'),
+        'rf': RandomForestClassifier(n_estimators=100)
     }
     return models
 
