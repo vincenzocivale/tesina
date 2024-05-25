@@ -6,60 +6,54 @@ from sklearn.pipeline import Pipeline
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
+import logging
 import traceback
 from ..features import dimensionality_reduction as dr
 from ..features import features_selection as fs
 from . import param_grid as pg
 
 
-
-def nested_cv_with_dim_reduction(X: pd.DataFrame, y: pd.Series, model: Any, model_name: str, feature_selector: str, dim_reduction: Any, scoring_metric: str,  outer_folds: int = 5, inner_folds: int = 3) -> Tuple[List[Dict[str, Any]], List[List[str]], List[float]]:
+def select_features_nested(X: pd.DataFrame, y: pd.Series, feature_selector: str, min_selections: int = 1, inner_folds: int = 3) -> List[str]:
     """
-    Perform a nested cross-validation, applying dimensionality reduction.
+    Select features once for all models.
 
     Args:
         X (pd.DataFrame): The input data.
         y (pd.Series): The target labels.
-        model (Any): The machine learning model to be used.
-        model_name (str): The name of the machine learning model.
         feature_selector (str): The feature selection method to be used.
-        dim_reduction (Any): The dimensionality reduction method to be used.
-        scoring_metric (str): The scoring metric to be used.
-        outer_folds (int, optional): The number of folds for the outer cross-validation. Defaults to 5.
+        min_selections (int, optional): The minimum number of times a feature must be selected to be included. Defaults to 1.
         inner_folds (int, optional): The number of folds for the inner cross-validation. Defaults to 3.
 
     Returns:
-        Tuple[List[Dict[str, Any]], List[List[str]], List[float]]: The best parameters, selected features, and outer scores.
+        List[str]: The selected features.
     """
-    param_grid = pg.param_grids[model_name]
-    outer_cv = KFold(n_splits=outer_folds, shuffle=True, random_state=42)
+    selected_features_counts = dict()
+
     inner_cv = KFold(n_splits=inner_folds, shuffle=True, random_state=42)
 
-    best_params, selected_features, outer_scores = [], [], []
-
-    for train_index, test_index in outer_cv.split(X, y):
-        X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-        y_train, y_test = y[train_index], y[test_index]
+    for train_index, val_index in inner_cv.split(X, y):
+        X_train, X_val = X.iloc[train_index], X.iloc[val_index]
+        y_train, y_val = y[train_index], y[val_index]
 
         try:
-            features_selected = fs.select_features_with_statistic_test(X_train, y_train, feature_selector)
-            X_train, X_test = X_train.loc[:, features_selected], X_test.loc[:, features_selected]
-            selected_features.append(features_selected)
-
-            pipeline = Pipeline([('reduce_dim', dim_reduction), (model_name, model)])
-            grid_search = GridSearchCV(pipeline, param_grid, cv=inner_cv, scoring=scoring_metric)
-            grid_search.fit(X_train, y_train)
-
-            best_params.append(grid_search.best_params_)
-            outer_scores.append(grid_search.score(X_test, y_test))
+            selected_features_fold = fs.select_features_with_statistic_test(X_train, y_train, feature_selector)
+            for feature in selected_features_fold:
+                selected_features_counts[feature] += 1
         except Exception as e:
-            error_details = traceback.format_exc()
-            print(f"Error in nested CV for fold: {str(e)}")
-            print(f"Error details: {error_details}")
+            print(f"Error in feature selection for fold: {str(e)}")
 
-    return best_params, selected_features, outer_scores
+    # Select features that were selected at least min_selections times
+    selected_features_once = [feature for feature, count in selected_features_counts.items() if count >= min_selections]
+    
+    return selected_features_once
 
-def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], feature_selector: str, metric: Union[str, make_scorer] = 'f1_macro') -> Dict[str, Tuple[List[str], Dict[str, Any], float]]:
+<<<<<<< HEAD
+
+
+def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], feature_selector: str, metric: Union[str, make_scorer] = 'f1_macro', logger: logging.Logger = None, outer_folds: int = 5, inner_folds: int = 3) -> Dict[str, Tuple[List[str], Dict[str, Any], float]]:
+=======
+def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], feature_selector: str, metrics_list: List[Union[str, make_scorer]] = ['f1_macro', make_scorer(matthews_corrcoef, greater_is_better=True)]) -> Dict[str, Dict[str, Tuple[List[str], Dict[str, Any], float]]]:
+>>>>>>> parent of 23fd83b (refactoring data organization functions)
     """
     Evaluate multiple models.
 
@@ -68,93 +62,132 @@ def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], featu
         y (pd.Series): The target labels.
         models (Dict[str, Any]): A dictionary of machine learning models to be evaluated.
         feature_selector (str): The feature selection method to be used.
+<<<<<<< HEAD
         metric (Union[str, make_scorer], optional): The metric to be used for evaluation. Defaults to 'f1_macro'.
+        logger (logging.Logger, optional): The logger object to log messages. Defaults to None.
+        outer_folds (int, optional): The number of folds for the outer cross-validation. Defaults to 5.
+        inner_folds (int, optional): The number of folds for the inner cross-validation. Defaults to 3.
+=======
+        metrics_list (List[Union[str, make_scorer]], optional): The list of metrics to be used for evaluation. Defaults to ['f1_macro', make_scorer(matthews_corrcoef, greater_is_better=True)].
+>>>>>>> parent of 23fd83b (refactoring data organization functions)
 
     Returns:
-        Dict[str, Tuple[List[str], Dict[str, Any], float]]: The results of the evaluation.
+        Dict[str, Dict[str, Tuple[List[str], Dict[str, Any], float]]]: The results of the evaluation.
     """
+<<<<<<< HEAD
     results = {}
-    with ProcessPoolExecutor() as executor:
-        future_to_model = {executor.submit(evaluate_model, X, y, model, model_name, metric, feature_selector): model_name for model_name, model in models.items()}
-        pbar = tqdm(total=len(future_to_model), desc=f"Models Evaluation with {metric}")
 
-        for future in as_completed(future_to_model):
-            name = future_to_model[future]
+    # Select features once for all models
+    selected_features = select_features_nested(X, y, feature_selector, inner_folds=inner_folds)
+
+    with tqdm(total=len(models), desc="Models Evaluation") as pbar:
+        for model_name, model in models.items():
+            pbar.set_description(f"Evaluating model: {model_name}")
             try:
-                scores = future.result()
-                results[name] = scores
+                best_params, outer_scores = nested_cv_with_dim_reduction(X[selected_features], y, model, model_name, metric, logger, outer_folds=outer_folds, inner_folds=inner_folds)
+                results[model_name] = (best_params, outer_scores)
             except Exception as e:
-                print(f"Error evaluating model {name}: {str(e)}")
+                if logger:
+                    logger.error(f"Error evaluating model {model_name}: {str(e)}")
+                else:
+                    print(f"Error evaluating model {model_name}: {str(e)}")
             pbar.update(1)
-        pbar.close()
-    return results
 
-def evaluate_model(X: pd.DataFrame, y: pd.Series, model: Any, model_name: str, scoring_metric: str, feature_selector_key: str,  dim_reduction_key: str = 'pca', outer_folds: int = 5, inner_folds: int = 3) -> Tuple[List[str], Dict[str, Any], float]:
+    return results
+=======
+    metric_results = {}
+
+    for metric in metrics_list:
+        results = {}
+        with ProcessPoolExecutor() as executor:
+            future_to_model = {executor.submit(evaluate_model, X, y, model,  model_name, metric, feature_selector): model_name for model_name, model in models.items()}
+            pbar = tqdm(total=len(future_to_model), desc=f"Models Evaluation with {metric}")
+
+            for future in as_completed(future_to_model):
+                name = future_to_model[future]
+                try:
+                    scores = future.result()
+                    results[name] = scores
+                except Exception as e:
+                    print(f"Error evaluating model {name}: {str(e)}")
+                pbar.update(1)
+            pbar.close()
+        metric_results[metric] = results
+    return metric_results
+>>>>>>> parent of 23fd83b (refactoring data organization functions)
+
+
+
+def nested_cv_with_dim_reduction(X: pd.DataFrame, y: pd.Series, model: Any, model_name: str, scoring_metric: str, logger: logging.Logger, outer_folds: int = 5, inner_folds: int = 3) -> Tuple[List[Dict[str, Any]], List[List[str]], List[float]]:
     """
-    Evaluate a single model.
+    Perform nested cross-validation with feature selection.
 
     Args:
         X (pd.DataFrame): The input data.
         y (pd.Series): The target labels.
-        model (Any): The machine learning model to be evaluated.
+        model (Any): The machine learning model to be used.
         model_name (str): The name of the machine learning model.
         scoring_metric (str): The scoring metric to be used.
-        feature_selector_key (str): The feature selection method to be used.
-        dim_reduction_key (str, optional): The dimensionality reduction method to be used. Defaults to 'pca'.
+        logger (logging.Logger): The logger object to log messages.
         outer_folds (int, optional): The number of folds for the outer cross-validation. Defaults to 5.
         inner_folds (int, optional): The number of folds for the inner cross-validation. Defaults to 3.
 
     Returns:
-        Tuple[List[str], Dict[str, Any], float]: The most common features, most common parameters, and score.
+        Tuple[List[Dict[str, Any]], List[List[str]], List[float]]: The best parameters, selected features, and outer scores.
     """
-    dim_reduction = dr.dimensionality_red_dict.get(dim_reduction_key)
-    if dim_reduction is None:
-        raise ValueError(f"Invalid dimensionality reduction key: {dim_reduction_key}")
+    param_grid = pg.param_grids[model_name]
+    outer_cv = KFold(n_splits=outer_folds, shuffle=True, random_state=42)
 
-    try:
-        best_params, selected_features, outer_scores = nested_cv_with_dim_reduction(X, y, model, model_name, feature_selector_key, dim_reduction, scoring_metric, outer_folds=outer_folds, inner_folds=inner_folds)
+    best_params, selected_features, outer_scores = [], [], []
 
-        feature_counts = Counter([feature for sublist in selected_features for feature in sublist])
-        most_common_features = [feature for feature, count in feature_counts.most_common() if count > 1]
+    for train_index, test_index in outer_cv.split(X, y):
+        X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+        y_train, y_test = y[train_index], y[test_index]
 
-        param_counts = Counter([str(param) for param in best_params])
-        most_common_params = eval(param_counts.most_common(1)[0][0])
+        try:
 
-        pipeline = Pipeline([('reduce_dim', dim_reduction), (model_name, model)])
-        pipeline.set_params(**most_common_params)
-        pipeline.fit(X[most_common_features], y)
+            # Train model with selected features and evaluate on test set
+            best_params_fold, outer_score = train_and_evaluate_model(X_train, y_train, X_test, y_test, model, param_grid, scoring_metric, logger)
 
-        score = evaluate_score(X, y, model, most_common_features, scoring_metric)
+            best_params.append(best_params_fold)
+            outer_scores.append(outer_score)
 
-        return most_common_features, most_common_params, score
-    except Exception as e:
-        print(f"Error in evaluate_model: {str(e)}")
-        return None, None, None
+            # Log the success
+            logger.info(f"Nested CV for fold successful. Best params: {best_params_fold}, Score: {outer_score}")
+        except Exception as e:
+            error_details = traceback.format_exc()
 
-def evaluate_score(X: pd.DataFrame, y: pd.Series, model: Any, features: List[str], scoring_metric: str) -> float:
+            # Log the error
+            logger.error(f"Error in nested CV for fold: {str(e)}")
+            logger.error(f"Error details: {error_details}")
+
+    return best_params, selected_features, outer_scores
+
+def train_and_evaluate_model(X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.DataFrame, y_test: pd.Series, model: Any, param_grid: Dict[str, List[Any]], scoring_metric: str, logger: logging.Logger) -> Tuple[Dict[str, Any], float]:
     """
-    Evaluate the model performance on the entire dataset.
+    Train and evaluate a model.
 
     Args:
-        X (pd.DataFrame): The input data.
-        y (pd.Series): The target labels.
-        model (Any): The machine learning model.
-        features (List[str]): List of selected features.
-        scoring_metric (str): The evaluation metric to be used.
+        X_train (pd.DataFrame): The training data.
+        y_train (pd.Series): The training labels.
+        X_test (pd.DataFrame): The test data.
+        y_test (pd.Series): The test labels.
+        model (Any): The machine learning model to be used.
+        param_grid (Dict[str, List[Any]]): The parameter grid for hyperparameter tuning.
+        scoring_metric (str): The scoring metric to be used.
+        logger (logging.Logger): The logger object to log messages.
 
     Returns:
-        float: The score obtained by the model.
+        Tuple[Dict[str, Any], float]: The best parameters found during training and the score on the test set.
     """
-    try:
-        y_pred = model.predict(X[features])
-        if scoring_metric == 'accuracy':
-            return accuracy_score(y, y_pred)
-        elif scoring_metric == 'f1_macro':
-            return f1_score(y, y_pred, average='macro')
-        elif scoring_metric == 'matthews_corrcoef':
-            return matthews_corrcoef(y, y_pred)
-        else:
-            raise ValueError(f"Unsupported scoring metric: {scoring_metric}")
-    except Exception as e:
-        print(f"Error in calculate model performance: {str(e)}")
-        return None
+    pipeline = Pipeline([('reduce_dim', dr.dimensionality_red_dict['pca']), (model.__class__.__name__, model)])
+    grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring=scoring_metric)
+    grid_search.fit(X_train, y_train)
+
+    best_params = grid_search.best_params_
+    score = grid_search.score(X_test, y_test)
+
+    # Log the success
+    logger.info(f"Model training and evaluation successful. Best params: {best_params}, Score: {score}")
+
+    return best_params, score
