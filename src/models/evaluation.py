@@ -59,7 +59,7 @@ def nested_cv_with_dim_reduction(X: pd.DataFrame, y: pd.Series, model: Any, mode
 
     return best_params, selected_features, outer_scores
 
-def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], feature_selector: str, metrics_list: List[Union[str, make_scorer]] = ['f1_macro', make_scorer(matthews_corrcoef, greater_is_better=True)]) -> Dict[str, Dict[str, Tuple[List[str], Dict[str, Any], float]]]:
+def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], feature_selector: str, metric: Union[str, make_scorer] = 'f1_macro') -> Dict[str, Tuple[List[str], Dict[str, Any], float]]:
     """
     Evaluate multiple models.
 
@@ -68,30 +68,26 @@ def evaluate_models(X: pd.DataFrame, y: pd.Series, models: Dict[str, Any], featu
         y (pd.Series): The target labels.
         models (Dict[str, Any]): A dictionary of machine learning models to be evaluated.
         feature_selector (str): The feature selection method to be used.
-        metrics_list (List[Union[str, make_scorer]], optional): The list of metrics to be used for evaluation. Defaults to ['f1_macro', make_scorer(matthews_corrcoef, greater_is_better=True)].
+        metric (Union[str, make_scorer], optional): The metric to be used for evaluation. Defaults to 'f1_macro'.
 
     Returns:
-        Dict[str, Dict[str, Tuple[List[str], Dict[str, Any], float]]]: The results of the evaluation.
+        Dict[str, Tuple[List[str], Dict[str, Any], float]]: The results of the evaluation.
     """
-    metric_results = {}
+    results = {}
+    with ProcessPoolExecutor() as executor:
+        future_to_model = {executor.submit(evaluate_model, X, y, model, model_name, metric, feature_selector): model_name for model_name, model in models.items()}
+        pbar = tqdm(total=len(future_to_model), desc=f"Models Evaluation with {metric}")
 
-    for metric in metrics_list:
-        results = {}
-        with ProcessPoolExecutor() as executor:
-            future_to_model = {executor.submit(evaluate_model, X, y, model,  model_name, metric, feature_selector): model_name for model_name, model in models.items()}
-            pbar = tqdm(total=len(future_to_model), desc=f"Models Evaluation with {metric}")
-
-            for future in as_completed(future_to_model):
-                name = future_to_model[future]
-                try:
-                    scores = future.result()
-                    results[name] = scores
-                except Exception as e:
-                    print(f"Error evaluating model {name}: {str(e)}")
-                pbar.update(1)
-            pbar.close()
-        metric_results[metric] = results
-    return metric_results
+        for future in as_completed(future_to_model):
+            name = future_to_model[future]
+            try:
+                scores = future.result()
+                results[name] = scores
+            except Exception as e:
+                print(f"Error evaluating model {name}: {str(e)}")
+            pbar.update(1)
+        pbar.close()
+    return results
 
 def evaluate_model(X: pd.DataFrame, y: pd.Series, model: Any, model_name: str, scoring_metric: str, feature_selector_key: str,  dim_reduction_key: str = 'pca', outer_folds: int = 5, inner_folds: int = 3) -> Tuple[List[str], Dict[str, Any], float]:
     """

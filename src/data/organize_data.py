@@ -1,40 +1,48 @@
-import logging
-from pathlib import Path
-from dotenv import find_dotenv, load_dotenv
 import pandas as pd
 import numpy as np
 import os
+import re
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling  import SMOTE
-from sklearn.preprocessing import StandardScaler
 
-def organize_data2(input_filepath, features_list):
+
+def organize_data(input_filepath):
     """
     Organize the data into a format that is ready for analysis
     """
 
-    df = pd.DataFrame(columns=['PatientID', 'SignalID', 'Group'] + features_list)
+    # Dizionario dei pattern per ogni gruppo di pazienti
+    patterns = {
+        'covid_Empoli_60': [r'pleth(\d+)\.npy_#(\d+)\.npy\.csv', r'pleth(\d+)\.npy_#(\d+|last)\.npy\.csv'],
+        'healthyControl_Empoli_60': [r'^(.*?)\.npy_#(\d+)\.npz\\.npy.csv$', r'pleth(\d+)\.npy_#(\d+|last)\.npz\.npy\.csv'],
+        'mentalDisorders_MIMIC_125': [r"p(\d+)-#(\d+)\.npz\.npy\.csv"],
+        'sepsis_MIMIC_125': [r"p(\d+)-#(\d+)\.npz\.npy\.csv"]
+    }
 
-    for root, dirs, files in os.walk(input_filepath):
-        for file in files:
-            if file.endswith('.csv'):
-                signal_id = file.split('#')[-1].split('.')[0]
+    data_rows = []  # Lista per contenere i dizionari temporanei
+
+    for root, _, files in os.walk(input_filepath):
+        for file_name in files:
+            if file_name.endswith('.csv'):
 
                 # sottogruppo del paziente
                 relative_path = os.path.relpath(root, input_filepath)
                 patient_group = relative_path.split(os.sep)[0]
-                
-                if patient_group=='mentalDisorders_MIMIC_125' or patient_group=='sepsis_MIMIC_125':
-                    patient_id = file.split('-')[0].split('.')[0]
-                    
-                    signal_id = file.split('-')[1].split('.')[0]
-                
-                elif patient_group=='covid_Empoli_60' or patient_group=='healthyControl_Empoli_60':
-                    patient_id = file.split('_')[0]
 
-                    signal_id = file.split('_')[1].split('.')[0]
+                # Verifica se il gruppo del paziente è noto
+                if patient_group not in patterns:
+                    raise ValueError(f"Unknown patient group '{patient_group}'")
 
-                full_file_path = os.path.join(root, file)  # Percorso completo del file
+                # Cerca di abbinare uno dei pattern
+                for pattern in patterns[patient_group]:
+                    match = re.match(pattern, file_name)
+                    if match:
+                        patient_id = match.group(1)
+                        signal_id = match.group(2)
+                        break
+                else:
+                    raise ValueError(f"Error: unable to identify the pattern in the file '{file_name}'")
+
+                full_file_path = os.path.join(root, file_name)  # Percorso completo del file
 
                 data_df = pd.read_csv(full_file_path)
 
@@ -45,11 +53,14 @@ def organize_data2(input_filepath, features_list):
                 data_df.insert(1, 'SignalID', signal_id)
                 data_df.insert(2, 'Group', patient_group)
 
-                df = pd.concat([df, data_df], ignore_index=True)
-            
+                # Converti ogni riga del DataFrame in un dizionario e aggiungilo alla lista
+                for _, row in data_df.iterrows():
+                    data_rows.append(row.to_dict())
+
+    # Crea un DataFrame dalla lista di dizionari
+    df = pd.DataFrame(data_rows)
+    
     return df
-
-
 
 def salva_dati_per_gruppo(df, percorso_base):
     """
@@ -111,11 +122,37 @@ def split_train_test(df, target, test_size=0.2, random_state=42):
 
     return X_train, X_test, y_train, y_test
 
+def normalize_np_files(input_folder, output_folder):
+    # Verifica se la cartella di output esiste, altrimenti creala
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
+    # Itera attraverso tutte le cartelle e sottocartelle nella cartella di input
+    for root, dirs, files in os.walk(input_folder):
+        for file in files:
+            if file.endswith('.npy') or file.endswith('.npz'):
+                # Percorso completo del file di input
+                input_file_path = os.path.join(root, file)
 
+                # Percorso completo del file di output con la stessa struttura della cartella di input
+                relative_path = os.path.relpath(input_file_path, input_folder)
+                output_file_path = os.path.join(output_folder, relative_path)
 
+                # Assicurati che la cartella di output esista
+                output_file_dir = os.path.dirname(output_file_path)
+                if not os.path.exists(output_file_dir):
+                    os.makedirs(output_file_dir)
 
+                # Carica il file npy o npz
+                if file.endswith('.npy'):
+                    data = np.load(input_file_path)
+                elif file.endswith('.npz'):
+                    npzfile = np.load(input_file_path)
+                    # Assumiamo che i file npz contengano un unico array, prendiamo il primo
+                    data = npzfile[list(npzfile.keys())[0]]
 
+                # Normalizza i dati (esempio: normalizzazione min-max)
+                normalized_data = (data - np.min(data)) / (np.max(data) - np.min(data))
 
-
-
+                # Salva i dati normalizzati nel nuovo file npy nella cartella di output con lo stesso nome
+                np.save(output_file_path, normalized_data)
